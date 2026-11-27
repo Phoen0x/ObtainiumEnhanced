@@ -2694,8 +2694,11 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
       );
     }
     if (exemptToNotify.isNotEmpty) {
+      // Réserver un ID distinct, hors de la plage des alertes d'erreur ci-dessous.
+      // Reserve a separate ID outside the range used for errors below.
+      const exemptUpdateNotificationId = 10000;
       notificationsProvider.notify(
-        TrackOnlyUpdateNotification(exemptToNotify),
+        UpdateNotification(exemptToNotify, id: exemptUpdateNotificationId),
       );
     }
 
