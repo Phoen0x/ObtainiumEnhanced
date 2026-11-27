@@ -2770,11 +2770,14 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
         );
       } catch (e) {
         if (e is MultiAppMultiError) {
-          e.idsByErrorString.forEach((key, value) {
-            notificationsProvider.notify(
-              ErrorCheckingUpdatesNotification(e.errorsAppsString(key, value)),
-            );
-          });
+          final details = e.toString();
+          final notification = ErrorCheckingUpdatesNotification.installation(
+            details,
+          );
+          if (notification.message != details) {
+            logs.add(details, level: LogLevels.error);
+          }
+          notificationsProvider.notify(notification);
         } else {
           // We don't expect to ever get here in any situation so no need to catch (but log it in case)
           logs.add('Fatal error in BG install task: ${e.toString()}');

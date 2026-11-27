@@ -19,6 +19,7 @@ class ObtainiumNotification {
   int? progPercent;
   bool onlyAlertOnce;
   String? payload;
+  StyleInformation? style;
 
   ObtainiumNotification(
     this.id,
@@ -31,6 +32,7 @@ class ObtainiumNotification {
     this.onlyAlertOnce = false,
     this.progPercent,
     this.payload,
+    this.style,
   });
 }
 
@@ -133,17 +135,46 @@ class SilentUpdateAttemptNotification extends ObtainiumNotification {
 }
 
 class ErrorCheckingUpdatesNotification extends ObtainiumNotification {
-  ErrorCheckingUpdatesNotification(String error, {int? id})
-    : super(
-        id ?? 5,
-        tr('errorCheckingUpdates'),
-        error,
-        'BG_UPDATE_CHECK_ERROR',
-        tr('errorCheckingUpdatesNotifChannel'),
-        tr('errorCheckingUpdatesNotifDescription'),
-        Importance.high,
-        payload: "${tr('errorCheckingUpdates')}\n$error",
-      );
+  ErrorCheckingUpdatesNotification(
+    String error, {
+    int? id,
+    String? title,
+    StyleInformation? style,
+  }) : super(
+         id ?? 5,
+         title ?? tr('errorCheckingUpdates'),
+         error,
+         'BG_UPDATE_CHECK_ERROR',
+         tr('errorCheckingUpdatesNotifChannel'),
+         tr('errorCheckingUpdatesNotifDescription'),
+         Importance.high,
+         payload: "${title ?? tr('errorCheckingUpdates')}\n$error",
+         style: style,
+       );
+
+  factory ErrorCheckingUpdatesNotification.installation(String details) {
+    const messageLimit = 900;
+    var message = details;
+    if (message.length > messageLimit) {
+      final suffix = "…\n\n${tr('appLogs')}";
+      var end = messageLimit - suffix.length;
+      // Éviter de couper un caractère UTF-16 avant le renvoi aux journaux.
+      // Avoid splitting a UTF-16 character before pointing to the logs.
+      final last = details.codeUnitAt(end - 1);
+      if (last >= 0xD800 && last <= 0xDBFF) {
+        end--;
+      }
+      message = '${details.substring(0, end).trimRight()}$suffix';
+    }
+    return ErrorCheckingUpdatesNotification(
+      message,
+      // Distinguer les erreurs d'installation des erreurs de vérification.
+      // Keep installation errors separate from update-check errors.
+      id: 10001,
+      title: tr('appsNotUpdated'),
+      style: BigTextStyleInformation(message),
+    );
+  }
 }
 
 class AppsRemovedNotification extends ObtainiumNotification {
@@ -301,6 +332,7 @@ class NotificationsProvider {
     int? progPercent,
     bool onlyAlertOnce = false,
     String? payload,
+    StyleInformation? style,
   }) async {
     if (cancelExisting) {
       await cancel(id);
@@ -325,6 +357,7 @@ class NotificationsProvider {
           showProgress: progPercent != null,
           onlyAlertOnce: onlyAlertOnce,
           indeterminate: progPercent != null && progPercent < 0,
+          styleInformation: style,
         ),
       ),
       payload: payload,
@@ -346,5 +379,6 @@ class NotificationsProvider {
     onlyAlertOnce: notif.onlyAlertOnce,
     progPercent: notif.progPercent,
     payload: notif.payload,
+    style: notif.style,
   );
 }
