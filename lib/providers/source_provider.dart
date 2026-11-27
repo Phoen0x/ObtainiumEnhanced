@@ -255,41 +255,84 @@ Map<String, dynamic> appJSONCompatibilityModifiers(Map<String, dynamic> json) {
       replacementAdditionalSettings['refreshBeforeDownload'] = true;
       additionalSettings = replacementAdditionalSettings;
     }
-    // VLC from before it was removed should be converted to HTML (#1943)
-    if (json['url'] == 'https://videolan.org' &&
+    const oldVlcUrl = 'https://videolan.org';
+    const vlcUrl = 'https://www.videolan.org/vlc/download-android.html';
+    const vlcVersionRegex = '/vlc-android/([^/]+)/';
+    const oldVlcFilter = r'arm64-v8a\.apk$';
+    if ((json['url'] == oldVlcUrl || json['url'] == vlcUrl) &&
         json['id'] == 'org.videolan.vlc' &&
         json['author'] == 'VideoLAN' &&
         json['name'] == 'VLC' &&
         json['overrideSource'] == null &&
         additionalSettings['trackOnly'] == false &&
-        additionalSettings['versionExtractionRegEx'] == '' &&
         json['lastUpdateCheck'] != null) {
-      json['url'] = 'https://www.videolan.org/vlc/download-android.html';
-      var replacementAdditionalSettings = getDefaultValuesFromFormItems(
-        HTML().combinedAppSpecificSettingFormItems,
-      );
-      replacementAdditionalSettings['refreshBeforeDownload'] = true;
-      replacementAdditionalSettings['intermediateLink'] =
-          <Map<String, dynamic>>[
-            {
-              'customLinkFilterRegex': 'APK',
-              'filterByLinkText': true,
-              'skipSort': false,
-              'reverseSort': false,
-              'sortByLastLinkSegment': false,
-            },
-            {
-              'customLinkFilterRegex': 'arm64-v8a\\.apk\$',
-              'filterByLinkText': false,
-              'skipSort': false,
-              'reverseSort': false,
-              'sortByLastLinkSegment': false,
-            },
-          ];
-      replacementAdditionalSettings['versionExtractionRegEx'] =
-          '/vlc-android/([^/]+)/';
-      replacementAdditionalSettings['matchGroupToUse'] = "1";
-      additionalSettings = replacementAdditionalSettings;
+      // Conserver l’architecture de l’APK sélectionné dans l’ancienne source.
+      // Preserve the ABI of the APK selected in the legacy source.
+      final preferredApk = preferredApkIndex < apkUrls.length
+          ? apkUrls[preferredApkIndex]
+          : null;
+      final apkUri = Uri.tryParse(preferredApk?.value ?? '');
+      final arch =
+          apkUri != null &&
+              apkUri.host == 'get.videolan.org' &&
+              apkUri.pathSegments.isNotEmpty &&
+              apkUri.pathSegments.last == preferredApk?.key
+          ? RegExp(
+              r'^/vlc-android/[^/]+/VLC-Android-[^/]+-(arm64-v8a|armeabi-v7a|x86|x86_64)\.apk$',
+            ).firstMatch(apkUri.path)?.group(1)
+          : null;
+      final steps = <Map<String, dynamic>>[
+        {
+          'customLinkFilterRegex': 'APK',
+          'filterByLinkText': true,
+          'skipSort': false,
+          'reverseSort': false,
+          'sortByLastLinkSegment': false,
+        },
+        {
+          'customLinkFilterRegex': oldVlcFilter,
+          'filterByLinkText': false,
+          'skipSort': false,
+          'reverseSort': false,
+          'sortByLastLinkSegment': false,
+        },
+      ];
+      if (json['url'] == oldVlcUrl &&
+          additionalSettings['versionExtractionRegEx'] == '') {
+        // Migrer la source VLC vers HTML (#1943).
+        // Migrate the VLC source to HTML (#1943).
+        json['url'] = vlcUrl;
+        additionalSettings = getDefaultValuesFromFormItems(
+          HTML().combinedAppSpecificSettingFormItems,
+        );
+        if (arch != null && arch != 'arm64-v8a') {
+          steps.last['customLinkFilterRegex'] = '-$arch\\.apk\$';
+        }
+        additionalSettings['refreshBeforeDownload'] = true;
+        additionalSettings['intermediateLink'] = steps;
+        additionalSettings['versionExtractionRegEx'] = vlcVersionRegex;
+        additionalSettings['matchGroupToUse'] = '1';
+      } else if (json['url'] == vlcUrl &&
+          arch != null &&
+          arch != 'arm64-v8a' &&
+          additionalSettings['refreshBeforeDownload'] == true &&
+          additionalSettings['versionExtractionRegEx'] == vlcVersionRegex &&
+          additionalSettings['matchGroupToUse'] == '1') {
+        // Réparer uniquement la configuration exacte de l’ancienne migration.
+        // Repair only the exact configuration from the original migration.
+        final savedSteps = additionalSettings['intermediateLink'];
+        if (savedSteps is List &&
+            savedSteps.length == steps.length &&
+            steps.asMap().entries.every((entry) {
+              final savedStep = savedSteps[entry.key];
+              final expected = entry.value;
+              return savedStep is Map &&
+                  savedStep.length == expected.length &&
+                  expected.entries.every((e) => savedStep[e.key] == e.value);
+            })) {
+          savedSteps.last['customLinkFilterRegex'] = '-$arch\\.apk\$';
+        }
+      }
     }
   }
   json['additionalSettings'] = jsonEncode(additionalSettings);
