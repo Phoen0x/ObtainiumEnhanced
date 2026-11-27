@@ -211,6 +211,9 @@ Future<List<MapEntry<String, String>>> grabLinksCommon(
 }
 
 class HTML extends AppSource {
+  static const _defaultUserAgent =
+      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36';
+
   @override
   List<List<GeneratedFormItem>> get combinedAppSpecificSettingFormItems {
     return super.combinedAppSpecificSettingFormItems.map((r) {
@@ -320,10 +323,7 @@ class HTML extends AppSource {
           ],
           label: tr('requestHeader'),
           defaultValue: [
-            {
-              'requestHeader':
-                  'User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
-            },
+            {'requestHeader': 'User-Agent: $_defaultUserAgent'},
           ],
         ),
       ],
@@ -361,6 +361,23 @@ class HTML extends AppSource {
             (additionalSettings['requestHeader'][i]['requestHeader'] as String)
                 .split(':');
         requestHeaders[temp[0].trim()] = temp.sublist(1).join(':').trim();
+      }
+      // La page Android de WhatsApp rejette l'agent mobile par défaut (#2279).
+      // The WhatsApp Android page rejects the default mobile user agent (#2279).
+      if (requestHeaders.length == 1 &&
+          requestHeaders['User-Agent'] == _defaultUserAgent) {
+        final uri = Uri.tryParse(url);
+        if (uri != null &&
+            uri.scheme == 'https' &&
+            (uri.host == 'whatsapp.com' || uri.host == 'www.whatsapp.com') &&
+            const [
+              '/android',
+              '/android/',
+              '/download/android',
+              '/download/android/',
+            ].contains(uri.path)) {
+          requestHeaders.remove('User-Agent');
+        }
       }
       return requestHeaders;
     }
