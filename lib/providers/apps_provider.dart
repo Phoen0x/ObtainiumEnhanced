@@ -4,7 +4,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -2490,7 +2489,14 @@ class _APKOriginWarningDialogState extends State<APKOriginWarningDialog> {
 /// In this mode, all pending silent updates are downloaded (in parallel) and installed in the background.
 /// If there is an error, the user is notified.
 ///
-Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
+Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) =>
+    _bgUpdateCheck(taskId, params, null);
+
+Future<void> _bgUpdateCheck(
+  String taskId,
+  Map<String, dynamic>? params,
+  MultiAppMultiError? previousTerminalErrors,
+) async {
   // ignore: avoid_print
   print('BG task started $taskId: ${params.toString()}');
   WidgetsFlutterBinding.ensureInitialized();
@@ -2577,8 +2583,8 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
     // If in update mode, we check for updates.
     // We divide the results into 4 groups:
     // - toNotify - Apps with updates that the user will be notified about (can't be silently installed)
-    // - toThrow - Apps with update check errors that the user will be notified about (no retry)
-    // After grouping the updates, we take care of toNotify and toThrow first
+    // - terminalErrors - Apps with update check errors that the user will be notified about (no retry)
+    // After grouping the updates, we take care of toNotify and terminalErrors first
     // Then we run the function again in install mode (toCheck is empty)
 
     var enoughTimePassed =
@@ -2605,10 +2611,8 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
     List<MapEntry<String, int>> toRetry =
         []; // All apps that got errors while checking
     var retryAfterXSeconds = 0;
-    MultiAppMultiError?
-    errors; // All errors including those that will lead to a retry
-    MultiAppMultiError toThrow =
-        MultiAppMultiError(); // All errors that will not lead to a retry, just a notification
+    final terminalErrors = previousTerminalErrors ?? MultiAppMultiError();
+    final previousTerminalErrorCount = terminalErrors.rawErrors.length;
     CheckingUpdatesNotification notif = CheckingUpdatesNotification(
       plural('apps', toCheck.length),
     ); // The notif. to show while checking
@@ -2623,8 +2627,8 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
     } catch (e) {
       if (e is Map) {
         updates = e['updates'];
-        errors = e['errors'];
-        errors!.rawErrors.forEach((key, err) {
+        final errors = e['errors'] as MultiAppMultiError;
+        errors.rawErrors.forEach((key, err) {
           logs.add(
             'BG update task: Got error on checking for $key \'${err.toString()}\'.',
           );
@@ -2646,7 +2650,7 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
             }
           } else {
             if (err is! RateLimitError) {
-              toThrow.add(key, err, appName: errors?.appIdNames[key]);
+              terminalErrors.add(key, err, appName: errors.appIdNames[key]);
             }
           }
         });
@@ -2699,14 +2703,17 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
       );
     }
 
-    // Send the error notifications (grouped by error string)
-    if (toThrow.rawErrors.isNotEmpty) {
-      for (var element in toThrow.idsByErrorString.entries) {
-        notificationsProvider.notify(
-          ErrorCheckingUpdatesNotification(
-            errors!.errorsAppsString(element.key, element.value),
-            id: Random().nextInt(10000),
-          ),
+    // Actualiser le bilan sans perdre les échecs des tentatives précédentes.
+    // Update the summary without losing failures from earlier attempts.
+    if (terminalErrors.rawErrors.length > previousTerminalErrorCount) {
+      try {
+        await notificationsProvider.notify(
+          ErrorCheckingUpdatesNotification.check(terminalErrors.toString()),
+        );
+      } catch (error) {
+        logs.add(
+          'BG update task: Could not show the update-check errors: $error',
+          level: LogLevels.error,
         );
       }
     }
@@ -2716,25 +2723,25 @@ Future<void> bgUpdateCheck(String taskId, Map<String, dynamic>? params) async {
       logs.add(
         'BG update task $taskId: Will retry in $retryAfterXSeconds seconds (${toRetry.length} to retry, ${toInstall.length} to install).',
       );
-      return await bgUpdateCheck(taskId, {
+      return await _bgUpdateCheck(taskId, {
         'toCheck': toRetry
             .map((entry) => {'key': entry.key, 'value': entry.value})
             .toList(),
         'toInstall': toInstall
             .map((entry) => {'key': entry.key, 'value': entry.value})
             .toList(),
-      });
+      }, terminalErrors);
     } else {
       // If there are no more update checks, call the function in install mode
       logs.add(
         'BG update task: Done checking for updates (${toRetry.length} to retry, ${toInstall.length} to install).',
       );
-      return await bgUpdateCheck(taskId, {
+      return await _bgUpdateCheck(taskId, {
         'toCheck': [],
         'toInstall': toInstall
             .map((entry) => {'key': entry.key, 'value': entry.value})
             .toList(),
-      });
+      }, terminalErrors);
     }
   } else {
     // In install mode...

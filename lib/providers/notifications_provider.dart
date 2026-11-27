@@ -152,7 +152,23 @@ class ErrorCheckingUpdatesNotification extends ObtainiumNotification {
          style: style,
        );
 
-  factory ErrorCheckingUpdatesNotification.installation(String details) {
+  factory ErrorCheckingUpdatesNotification.check(String details) =>
+      ErrorCheckingUpdatesNotification._withDetails(details);
+
+  factory ErrorCheckingUpdatesNotification.installation(String details) =>
+      ErrorCheckingUpdatesNotification._withDetails(
+        details,
+        // Distinguer les erreurs d'installation des erreurs de vérification.
+        // Keep installation errors separate from update-check errors.
+        id: 10001,
+        title: tr('appsNotUpdated'),
+      );
+
+  factory ErrorCheckingUpdatesNotification._withDetails(
+    String details, {
+    int? id,
+    String? title,
+  }) {
     const messageLimit = 900;
     var message = details;
     if (message.length > messageLimit) {
@@ -168,10 +184,8 @@ class ErrorCheckingUpdatesNotification extends ObtainiumNotification {
     }
     return ErrorCheckingUpdatesNotification(
       message,
-      // Distinguer les erreurs d'installation des erreurs de vérification.
-      // Keep installation errors separate from update-check errors.
-      id: 10001,
-      title: tr('appsNotUpdated'),
+      id: id,
+      title: title,
       style: BigTextStyleInformation(message),
     );
   }
