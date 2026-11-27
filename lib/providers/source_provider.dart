@@ -76,6 +76,19 @@ List<MapEntry<String, String>> assumed2DlistToStringMapList(
   List<dynamic> arr,
 ) => arr.map((e) => MapEntry(e[0] as String, e[1] as String)).toList();
 
+// Conserver les réglages reconnus par la source HTML lors d'une migration.
+// Preserve settings supported by the HTML source during migration.
+Map<String, dynamic> _getMigratedHtmlSettings(Map<String, dynamic> settings) {
+  final migrated = getDefaultValuesFromFormItems(
+    HTML().combinedAppSpecificSettingFormItems,
+  );
+  migrated.updateAll(
+    (key, defaultValue) =>
+        settings.containsKey(key) ? settings[key] : defaultValue,
+  );
+  return migrated;
+}
+
 // App JSON schema has changed multiple times over the many versions of Obtainium
 // This function takes an App JSON and modifies it if needed to conform to the latest (current) version
 Map<String, dynamic> appJSONCompatibilityModifiers(Map<String, dynamic> json) {
@@ -207,14 +220,9 @@ Map<String, dynamic> appJSONCompatibilityModifiers(Map<String, dynamic> json) {
     var legacySteamSourceApps = ['steam', 'steam-chat-app'];
     if (legacySteamSourceApps.contains(additionalSettings['app'] ?? '')) {
       json['url'] = '${json['url']}/mobile';
-      var replacementAdditionalSettings = getDefaultValuesFromFormItems(
-        HTML().combinedAppSpecificSettingFormItems,
+      var replacementAdditionalSettings = _getMigratedHtmlSettings(
+        additionalSettings,
       );
-      for (var s in replacementAdditionalSettings.keys) {
-        if (additionalSettings.containsKey(s)) {
-          replacementAdditionalSettings[s] = additionalSettings[s];
-        }
-      }
       replacementAdditionalSettings['customLinkFilterRegex'] =
           '/${additionalSettings['app']}-(([0-9]+\\.?){1,})\\.apk';
       replacementAdditionalSettings['versionExtractionRegEx'] =
@@ -232,8 +240,8 @@ Map<String, dynamic> appJSONCompatibilityModifiers(Map<String, dynamic> json) {
         additionalSettings['versionExtractionRegEx'] == '' &&
         json['lastUpdateCheck'] != null) {
       json['url'] = 'https://updates.signal.org/android/latest.json';
-      var replacementAdditionalSettings = getDefaultValuesFromFormItems(
-        HTML().combinedAppSpecificSettingFormItems,
+      var replacementAdditionalSettings = _getMigratedHtmlSettings(
+        additionalSettings,
       );
       replacementAdditionalSettings['versionExtractionRegEx'] =
           '\\d+.\\d+.\\d+';
@@ -249,8 +257,8 @@ Map<String, dynamic> appJSONCompatibilityModifiers(Map<String, dynamic> json) {
         additionalSettings['versionExtractionRegEx'] == '' &&
         json['lastUpdateCheck'] != null) {
       json['url'] = 'https://whatsapp.com/android';
-      var replacementAdditionalSettings = getDefaultValuesFromFormItems(
-        HTML().combinedAppSpecificSettingFormItems,
+      var replacementAdditionalSettings = _getMigratedHtmlSettings(
+        additionalSettings,
       );
       replacementAdditionalSettings['refreshBeforeDownload'] = true;
       additionalSettings = replacementAdditionalSettings;
@@ -265,8 +273,8 @@ Map<String, dynamic> appJSONCompatibilityModifiers(Map<String, dynamic> json) {
         additionalSettings['versionExtractionRegEx'] == '' &&
         json['lastUpdateCheck'] != null) {
       json['url'] = 'https://www.videolan.org/vlc/download-android.html';
-      var replacementAdditionalSettings = getDefaultValuesFromFormItems(
-        HTML().combinedAppSpecificSettingFormItems,
+      var replacementAdditionalSettings = _getMigratedHtmlSettings(
+        additionalSettings,
       );
       replacementAdditionalSettings['refreshBeforeDownload'] = true;
       replacementAdditionalSettings['intermediateLink'] =
